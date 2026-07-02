@@ -1,0 +1,49 @@
+name: Traffic Sampler
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/15 5-20 * * *"
+      timezone: "Australia/Brisbane"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: traffic-sampler
+  cancel-in-progress: false
+
+jobs:
+  sample:
+    runs-on: ubuntu-latest
+
+    env:
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+      TRAFFIC_TIMEZONE: Australia/Brisbane
+
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run traffic sampler
+        run: python traffic_sampler.py
+
+      - name: Commit updated data
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add traffic_log.csv
+          if [ -f traffic_errors.log ]; then
+            git add traffic_errors.log
+          fi
+          git diff --cached --quiet || git commit -m "Update traffic samples"
+          git push
