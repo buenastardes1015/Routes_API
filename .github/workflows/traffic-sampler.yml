@@ -42,8 +42,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add traffic_log.csv
-          if [ -f traffic_errors.log ]; then
-            git add traffic_errors.log
-          fi
           git diff --cached --quiet || git commit -m "Update traffic samples"
           git push

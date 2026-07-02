@@ -1,5 +1,4 @@
 .env
-traffic_log.csv
 traffic_errors.log
 __pycache__/
 *.pyc
