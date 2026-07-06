@@ -9,11 +9,13 @@ Schedule this via Windows Task Scheduler to run every 15 minutes, 5am-9pm.
 
 import csv
 import os
+import re
 import sys
 import uuid
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+import psycopg
 import requests
 from dotenv import load_dotenv
 
@@ -27,6 +29,9 @@ DESTINATION = "-28.1674358635075, 153.54325398418715"  # Greenmount Beach, QLD
 OUTPUT_CSV = os.path.join(os.path.dirname(os.path.abspath(__file__)), "traffic_log.csv")
 TIMEZONE = os.environ.get("TRAFFIC_TIMEZONE", "Australia/Brisbane")
 LOCAL_TZ = ZoneInfo(TIMEZONE)
+DATABASE_URL = os.environ.get("DATABASE_URL")
+TABLE_NAME = os.environ.get("TRAFFIC_TABLE_NAME", "traffic_samples")
+VALID_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 ROUTES = [
     {
@@ -68,6 +73,8 @@ CSV_FIELDS = [
     "distance_km",
     "route_description",
 ]
+
+INSERT_FIELDS = [field for field in CSV_FIELDS]
 
 
 def is_within_hours():
@@ -168,6 +175,97 @@ def append_to_csv(row: dict, filepath: str):
         writer.writerow(row)
 
 
+def get_safe_table_name():
+    if not VALID_IDENTIFIER.fullmatch(TABLE_NAME):
+        raise ValueError(
+            "TRAFFIC_TABLE_NAME must start with a letter or underscore and contain only letters, numbers, and underscores."
+        )
+    return TABLE_NAME
+
+
+def create_table_if_needed(connection):
+    table_name = get_safe_table_name()
+    create_table_sql = f"""
+    CREATE TABLE IF NOT EXISTS {table_name} (
+        id BIGSERIAL PRIMARY KEY,
+        sample_timestamp TIMESTAMPTZ NOT NULL,
+        sample_batch_id TEXT NOT NULL,
+        direction TEXT NOT NULL,
+        origin_label TEXT NOT NULL,
+        destination_label TEXT NOT NULL,
+        day_of_week TEXT NOT NULL,
+        date DATE NOT NULL,
+        hour INTEGER NOT NULL,
+        minute INTEGER NOT NULL,
+        timezone TEXT NOT NULL,
+        duration_traffic_min DOUBLE PRECISION NOT NULL,
+        duration_static_min DOUBLE PRECISION NOT NULL,
+        delay_min DOUBLE PRECISION NOT NULL,
+        delay_ratio DOUBLE PRECISION NOT NULL,
+        distance_km DOUBLE PRECISION NOT NULL,
+        route_description TEXT,
+        UNIQUE (sample_batch_id, direction)
+    );
+    """
+
+    with connection.cursor() as cursor:
+        cursor.execute(create_table_sql)
+    connection.commit()
+
+
+def insert_rows_to_database(rows):
+    if not DATABASE_URL:
+        raise ValueError("DATABASE_URL is not set.")
+
+    table_name = get_safe_table_name()
+    insert_sql = f"""
+    INSERT INTO {table_name} (
+        sample_timestamp,
+        sample_batch_id,
+        direction,
+        origin_label,
+        destination_label,
+        day_of_week,
+        date,
+        hour,
+        minute,
+        timezone,
+        duration_traffic_min,
+        duration_static_min,
+        delay_min,
+        delay_ratio,
+        distance_km,
+        route_description
+    ) VALUES (
+        %(sample_timestamp)s,
+        %(sample_batch_id)s,
+        %(direction)s,
+        %(origin_label)s,
+        %(destination_label)s,
+        %(day_of_week)s,
+        %(date)s,
+        %(hour)s,
+        %(minute)s,
+        %(timezone)s,
+        %(duration_traffic_min)s,
+        %(duration_static_min)s,
+        %(delay_min)s,
+        %(delay_ratio)s,
+        %(distance_km)s,
+        %(route_description)s
+    )
+    ON CONFLICT (sample_batch_id, direction) DO NOTHING;
+    """
+
+    with psycopg.connect(DATABASE_URL) as connection:
+        create_table_if_needed(connection)
+        with connection.cursor() as cursor:
+            for row in rows:
+                db_row = {field: row[field] for field in INSERT_FIELDS}
+                cursor.execute(insert_sql, db_row)
+        connection.commit()
+
+
 def migrate_csv_if_needed(filepath: str):
     if not os.path.isfile(filepath):
         return
@@ -213,10 +311,11 @@ if __name__ == "__main__":
         migrate_csv_if_needed(OUTPUT_CSV)
         sample_timestamp = datetime.now(LOCAL_TZ)
         sample_batch_id = f"{sample_timestamp.strftime('%Y%m%dT%H%M%S')}-{uuid.uuid4().hex[:8]}"
+        results = []
 
         for route in ROUTES:
             result = get_travel_time(route, API_KEY, sample_timestamp, sample_batch_id)
-            append_to_csv(result, OUTPUT_CSV)
+            results.append(result)
             print(
                 f"[{result['sample_timestamp']}] "
                 f"{result['direction']} "
@@ -224,6 +323,12 @@ if __name__ == "__main__":
                 f"(+{format_hm(result['_delay_s'])} vs no traffic) "
                 f"| {result['distance_km']} km"
             )
+
+        if DATABASE_URL:
+            insert_rows_to_database(results)
+        else:
+            for result in results:
+                append_to_csv(result, OUTPUT_CSV)
     except Exception as exc:
         error_log = OUTPUT_CSV.replace("traffic_log.csv", "traffic_errors.log")
         with open(error_log, "a", encoding="utf-8") as file_handle:
