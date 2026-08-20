@@ -1097,3 +1097,5 @@ sample_timestamp,sample_batch_id,direction,origin_label,destination_label,day_of
 2026-08-20T09:36:37+10:00,20260820T093637-3b639dfb,Northbound,Greenmount Beach,Toowong Village,Thursday,2026-08-20,9,36,Australia/Brisbane,87.0,79.7,7.3,0.091,108.76,M1
 2026-08-20T09:58:52+10:00,20260820T095852-b8397217,Southbound,Toowong Village,Greenmount Beach,Thursday,2026-08-20,9,58,Australia/Brisbane,87.4,80.7,6.7,0.083,109.11,M1
 2026-08-20T09:58:52+10:00,20260820T095852-b8397217,Northbound,Greenmount Beach,Toowong Village,Thursday,2026-08-20,9,58,Australia/Brisbane,86.2,79.7,6.5,0.081,108.76,M1
+2026-08-20T11:44:53+10:00,20260820T114453-09ee1973,Southbound,Toowong Village,Greenmount Beach,Thursday,2026-08-20,11,44,Australia/Brisbane,83.1,80.6,2.5,0.031,108.73,M1
+2026-08-20T11:44:53+10:00,20260820T114453-09ee1973,Northbound,Greenmount Beach,Toowong Village,Thursday,2026-08-20,11,44,Australia/Brisbane,81.8,79.7,2.1,0.026,108.76,M1
